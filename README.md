@@ -28,6 +28,22 @@ No publicly accessible, ML-ready fusion irradiation database exists. EUROfusion 
 
 ---
 
+## Dataset Visualisations
+
+![Irradiation coverage map](dataset/figures/fig1_coverage_map.png)
+*Irradiation condition coverage — 9,861 records plotted in dose–temperature space across 19 material classes. Covers fission reactor conditions (0.01–500 dpa, -250 to 1500°C) relevant to ITER, DEMO, and private fusion machines.*
+
+![Radiation hardening curves](dataset/figures/fig2_hardening_curves.png)
+*Radiation hardening — yield strength vs dose for RAFM steels (451 pts) and vanadium alloys (362 pts). Higher doses and lower temperatures produce more hardening, consistent with dispersed barrier hardening (DBH) theory.*
+
+![Coverage bars](dataset/figures/fig3_coverage_bars.png)
+*Material class distribution (left) and property coverage (right). RAFM steels dominate — reflecting 40 years of ORNL focus on ferritic/martensitic steels for fusion first-wall applications.*
+
+![Analysis panels](dataset/figures/fig4_analysis_panels.png)
+*Left: Void swelling vs dose — the expected increasing trend validates extraction accuracy. Centre: Records extracted per ORNL report volume (1990–2024). Right: 85% of records score ≥ 0.7 confidence.*
+
+---
+
 ## Quick Start
 
 ```bash
