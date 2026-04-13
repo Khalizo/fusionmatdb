@@ -40,8 +40,10 @@ class VertexVisionExtractor:
 
     MODEL = "gemini-3-flash-preview"           # Gemini 3 Flash via Vertex AI Express
     MODEL_SA = "publishers/google/models/gemini-2.5-flash"  # fallback for SA key auth
-    SA_KEY_PATH = "/Users/khalizo/.config/melodious/gcp-vertex-ai-sa-key.json"
-    GCP_PROJECT = "gen-lang-client-0205307352"
+    # Set SA_KEY_PATH via constructor or GOOGLE_APPLICATION_CREDENTIALS env var
+    SA_KEY_PATH: str | None = None
+    # Set GCP_PROJECT via constructor or default to None (uses ADC project)
+    GCP_PROJECT: str | None = None
     GCP_LOCATION = "us-central1"
     DPI = 120
     MAX_CONCURRENT = 20
@@ -70,9 +72,11 @@ class VertexVisionExtractor:
                 self._model = self.MODEL
                 return self._client
 
-            if Path(self.sa_key_path).exists():
+            # Try SA key — check GOOGLE_APPLICATION_CREDENTIALS first, then explicit path
+            sa_path = self.sa_key_path or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if sa_path and Path(sa_path).exists():
                 creds = google.oauth2.service_account.Credentials.from_service_account_file(
-                    self.sa_key_path,
+                    sa_path,
                     scopes=["https://www.googleapis.com/auth/cloud-platform"],
                 )
                 self._client = genai.Client(
