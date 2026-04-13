@@ -194,7 +194,7 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
 | ⚛️ [FusionMatDB](https://github.com/Khalizo/fusionmatdb) | This repo — the database and extraction pipeline |
 | 🧭 [FusionGuide](https://github.com/Khalizo/fusionguide) | Bayesian active learning for experiment planning |
 | 🔬 [FusionUQ](https://github.com/Khalizo/fusionuq) | Uncertainty quantification for ML interatomic potentials |
-| 📊 [FusionMatDB Dataset](https://huggingface.co/datasets/Khalizo/fusionmatdb) | HuggingFace dataset with train/val/test splits |
+| 📊 [Dataset on HuggingFace](https://huggingface.co/datasets/Khalizo/fusionmatdb) | Parquet files with train/val/test splits (DOI: 10.57967/hf/8386) |
 
 ---
 
