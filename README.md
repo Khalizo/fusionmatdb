@@ -202,7 +202,7 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
 ```bibtex
 @dataset{fusionmatdb2026,
   title  = {FusionMatDB: An Open-Source Fusion Irradiation Materials Database},
-  author = {Khalizo},
+  author = {Khalidson, Babs},
   year   = {2026},
   url    = {https://huggingface.co/datasets/Khalizo/fusionmatdb},
   note   = {22,269 records from 65 ORNL reports (1990-2024), extracted with Gemini 3 Flash.}
