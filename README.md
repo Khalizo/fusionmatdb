@@ -5,6 +5,7 @@
 <p align="center">
   <strong>The first open-source fusion irradiation materials database.</strong><br>
   22,269 structured records extracted from 65 ORNL reports (1990–2024) using multimodal VLM.
+  <em>Materials tested under fission neutron irradiation — the standard proxy for fusion conditions until IFMIF becomes operational.</em>.
 </p>
 
 <p align="center">
