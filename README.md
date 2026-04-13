@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>The first open-source fusion irradiation materials database.</strong><br>
-  22,269 structured records extracted from 65 ORNL reports (1990–2024) using Gemini 3 Flash vision.
+  22,269 structured records extracted from 65 ORNL reports (1990–2024) using multimodal VLM.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 
 ---
 
-No publicly accessible, ML-ready fusion irradiation database exists. EUROfusion EDDI (~3,000 records) is locked behind EU consortium access. MatDB4Fusion covers unirradiated baselines only. **FusionMatDB fills the gap**: irradiation effects data extracted from decades of publicly available PDFs — for ~$40 and 44 minutes of Vertex AI compute.
+No publicly accessible, ML-ready fusion irradiation database exists. EUROfusion EDDI (~3,000 records) is locked behind EU consortium access. MatDB4Fusion covers unirradiated baselines only. **FusionMatDB fills the gap**: irradiation effects data extracted from decades of publicly available PDFs — for ~$40 and 44 minutes of cloud VLM API compute.
 
 > *"An open-access, single source of truth for high-quality fusion materials data... is essential for this new phase of technology development."*
 > — Jim Pickles, Head of Materials, Tokamak Energy (COP29, November 2024)
@@ -35,7 +35,7 @@ pip install -e .
 # Ingest SDC-IC ITER material curves (free, instant)
 fusionmatdb ingest-sdc-ic --repo-path /path/to/SDC-IC-Material-Library --db fusionmatdb.sqlite
 
-# Extract all 65 ORNL reports (~$40, ~44 mins on Vertex AI)
+# Extract all 65 ORNL reports (~$40, ~44 mins on cloud VLM API)
 export GOOGLE_CLOUD_API_KEY="your-vertex-ai-express-key"
 fusionmatdb build --pdf-dir data/ornl_pdfs --db fusionmatdb.sqlite
 
@@ -74,7 +74,7 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
            │ (asyncio x 20)             │
            ▼                            │
   ┌──────────────────────────────┐      │
-  │  GEMINI 3 FLASH — VERTEX AI  │      │
+  │  MULTIMODAL VLM EXTRACTION  │      │
   │  20 concurrent · temp=0      │      │
   │  Reads: tables + figures     │      │
   │  Cost: ~$40 · Time: ~44 min  │      │
@@ -118,7 +118,7 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
 | **GP-ready rows** (yield + dose + temp) | 1,594 |
 | **Material classes** | 19 |
 | **Source documents** | 65 ORNL reports + SDC-IC ITER library |
-| **Extraction model** | Gemini 3 Flash (Vertex AI, temperature=0) |
+| **Extraction model** | multimodal VLM (cloud VLM API, temperature=0) |
 | **Cost to reproduce** | ~$40 |
 
 ### Property Coverage
@@ -205,6 +205,6 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
   author = {Khalidson, Babs},
   year   = {2026},
   url    = {https://huggingface.co/datasets/Khalizo/fusionmatdb},
-  note   = {22,269 records from 65 ORNL reports (1990-2024), extracted with Gemini 3 Flash.}
+  note   = {22,269 records from 65 ORNL reports (1990-2024), extracted with multimodal VLM.}
 }
 ```
