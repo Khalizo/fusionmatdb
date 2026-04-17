@@ -166,6 +166,146 @@ Runs against existing 22,269 records. No API calls — uses data already in DB a
 
 ---
 
+## Sub-project 5: Updated VLM Extraction & Validation Run
+
+### Extraction prompt update: `fusionmatdb/extraction/prompts.py`
+
+Add new fields to `_FIELDS` and update `VISION_EXTRACTION_PROMPT`:
+
+**New fields in `_FIELDS`:**
+```
+TRACEABILITY & PROVENANCE:
+- source_reference: string or null  (exact table/figure ID, e.g. "Table 3.2", "Fig. 4.1a", "p.15 paragraph 2")
+- source_institution: string or null  (lab/institution that produced the data, e.g. "ORNL", "JAEA", "KIT", "PNNL")
+- experimental_method_detail: string or null  (e.g. "miniature tensile, gauge length 5mm", "Vickers HV10 1kg load")
+- n_specimens: integer or null  (number of specimens tested, if stated)
+- data_origin: "primary_measurement" or "derived" or "cited_from_other_work" or null
+
+UNCERTAINTY BOUNDS (extract when reported as ranges, error bars, or ± values):
+- yield_strength_mpa_irradiated_lower: number or null
+- yield_strength_mpa_irradiated_upper: number or null
+- uts_mpa_irradiated_lower: number or null
+- uts_mpa_irradiated_upper: number or null
+- hardness_lower: number or null
+- hardness_upper: number or null
+- dbtt_k_irradiated_lower: number or null
+- dbtt_k_irradiated_upper: number or null
+- irradiation_temp_lower: number or null  (°C, if range reported)
+- irradiation_temp_upper: number or null
+- dose_dpa_lower: number or null
+- dose_dpa_upper: number or null
+```
+
+**Updated vision prompt instructions (appended to existing):**
+```
+- For EVERY datapoint, record which table or figure it came from in source_reference
+- Note the institution/lab that performed the experiment in source_institution
+- If the paper cites data from another publication rather than reporting original measurements, set data_origin to "cited_from_other_work"
+- Extract upper/lower bounds when shown as error bars, ranges (e.g. "350-400 MPa"), or ± notation
+- Record number of specimens (n) when stated (e.g. "n=3", "average of 5 specimens")
+- Include experimental method details when given (specimen geometry, test standard, loading rate)
+```
+
+### Sample extraction run
+
+Run updated extraction on 3 ORNL reports selected for diversity:
+- **Report 70** (recent, good data density, has creep data)
+- **Report 40** (mid-era, different formatting)
+- **Report 10** (early era, tests extraction on older document style)
+
+Process:
+1. Download the 3 PDFs via `ORNLDownloader`
+2. Run `VertexVisionExtractor.extract_pdf()` with updated prompt
+3. Ingest into fresh SQLite DB with new schema
+4. Run backfill (quality assessments, provenance, trust scores)
+5. Validate: check new fields are populated, inspect sample records, verify lineage works end-to-end
+
+**Success criteria:**
+- >50% of extracted records have `source_reference` populated
+- >80% have `source_institution` populated
+- >20% of records with numeric properties have at least one uncertainty bound
+- `n_specimens` populated where stated in source
+- All records get quality assessment, provenance hash, and trust score
+- Lineage query returns complete chain for any record
+
+### Output: comparison report
+
+Generate a before/after comparison showing the same records extracted with old vs. new prompt, highlighting the additional metadata captured. This feeds into the data quality report.
+
+---
+
+## Sub-project 6: Data Quality Report Generator
+
+### New module: `fusionmatdb/reporting/__init__.py`
+
+**`fusionmatdb/reporting/quality_report.py`**
+
+Generates a standalone HTML report (single file, embedded CSS, no JS dependencies) that addresses each of the 8 concerns with data evidence.
+
+**Report sections:**
+
+1. **Executive Summary**
+   - Total records, material classes, source documents
+   - Overall trust score distribution (histogram)
+   - Key headline numbers: "X% of records fully traceable to source PDF + page"
+
+2. **Data Quality Hierarchy** (Concern 1)
+   - Breakdown by quality_level: count, %, examples
+   - Table showing quality_level definitions and how each was assigned
+   - Pie chart of quality distribution
+
+3. **Traceability** (Concern 2)
+   - % of records with source_pdf_url, source_page_number, source_figure_or_table
+   - 3 sample "lineage cards" — full trace from record → page → PDF → institution
+   - Direct links to source PDFs (clickable `fmp.ornl.gov` URLs)
+
+4. **Provenance & De-duplication** (Concern 3)
+   - Total duplicate clusters found, records deduplicated
+   - Methodology description (content hash + numeric similarity)
+   - Example duplicate cluster showing the records and which was marked primary
+
+5. **Uncertainty & Statistical Representation** (Concern 4)
+   - % of records with uncertainty bounds
+   - % with n_specimens
+   - Sample property with full uncertainty: value, bounds, distribution type, n
+   - Note on how this enables Bayesian/GP workflows (link to FusionUQ)
+
+6. **Validation & QA** (Concern 5)
+   - Extraction confidence distribution (histogram, building on existing Fig 4)
+   - Cross-field physics check results: N flagged, N passed
+   - Anomaly detection results: N outliers flagged
+   - Extraction accuracy benchmark (if reference set available): per-field precision/recall
+
+7. **Observability & Transparency** (Concern 6)
+   - Description of the extraction pipeline with provenance at each step
+   - Raw VLM response preservation (link to cached JSON)
+   - "Every record can be inspected" — show CLI lineage command example
+
+8. **Engineering Decision Support** (Concern 8)
+   - Trust score distribution and interpretation guide
+   - "Records suitable for design basis" (trust ≥ 70): count, material classes covered
+   - Comparison table: FusionMatDB vs EDDI vs MatDB4Fusion on these quality dimensions
+
+9. **Data Extraction Quality** (Concern 9)
+   - VLM model and parameters used
+   - Extraction methodology description
+   - Accuracy metrics (if benchmark available)
+   - Before/after comparison from prompt update (from sub-project 5)
+
+**Report generation:**
+- `generate_quality_report(db_path, output_path) -> Path` — produces `fusionmatdb_quality_report.html`
+- Uses Python string templating (no Jinja2 dependency) with embedded CSS
+- Charts rendered as inline SVG (matplotlib → SVG buffer → embedded)
+- Self-contained single HTML file, viewable in any browser, printable to PDF
+
+### CLI addition
+
+```
+fusionmatdb quality-report --db fusionmatdb.sqlite --output fusionmatdb_quality_report.html
+```
+
+---
+
 ## Knowledge Graph (Out of Scope)
 
 Covered by a separate project. Stub module `fusionmatdb/knowledge/__init__.py` with TODO comment. README updated to note this is planned.
@@ -185,6 +325,9 @@ Each sub-project includes tests in `tests/`:
 
 Standalone test functions, no classes. Fixtures via pytest fixtures or inline factory functions.
 
+- Extraction prompt: test that new fields appear in VLM output (mock VLM response with new fields, verify parsing)
+- Quality report: test HTML generation with fixture DB, verify all 9 sections present, verify embedded charts render
+
 ---
 
 ## Files Changed (estimated)
@@ -195,5 +338,24 @@ Standalone test functions, no classes. Fixtures via pytest fixtures or inline fa
 | 2: QA | `qa/__init__.py`, `qa/qa_report.py`, `qa/dedup_detector.py`, `qa/accuracy_benchmark.py` | `extraction/validator.py`, `cli.py` |
 | 3: Trust | `trust/__init__.py`, `trust/trust_score.py`, `trust/lineage.py` | `cli.py`, export logic |
 | 4: Backfill | `scripts/backfill_quality.py` | — |
+| 5: Extraction | — | `extraction/prompts.py`, `access/vision_extractor.py` (parse new fields), `cli.py` |
+| 6: Report | `reporting/__init__.py`, `reporting/quality_report.py` | `cli.py` |
 | Stubs | `knowledge/__init__.py` | `README.md` |
-| Tests | `tests/test_quality_assessment.py`, `tests/test_provenance.py`, `tests/test_dedup.py`, `tests/test_trust_score.py`, `tests/test_lineage.py`, `tests/test_backfill.py` | — |
+| Tests | `tests/test_quality_assessment.py`, `tests/test_provenance.py`, `tests/test_dedup.py`, `tests/test_trust_score.py`, `tests/test_lineage.py`, `tests/test_backfill.py`, `tests/test_extraction_prompt.py`, `tests/test_quality_report.py` | — |
+
+## Execution Order
+
+```
+Phase 1 (parallel):  Sub-project 1 (Schema)
+                      Sub-project 5 (Extraction prompt update)
+
+Phase 2 (parallel):  Sub-project 2 (QA framework)     — depends on schema
+                      Sub-project 3 (Trust/lineage)    — depends on schema
+
+Phase 3 (sequential): Sub-project 4 (Backfill)         — depends on 1+2+3
+
+Phase 4 (sequential): Sub-project 5 contd (Sample run)  — depends on 1+5 prompt
+                       Sub-project 6 (Quality report)   — depends on all above
+```
+
+The user provides GOOGLE_CLOUD_API_KEY before Phase 4 begins. Phases 1-3 require no API access.
