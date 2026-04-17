@@ -620,6 +620,44 @@ def fraud_scan_cmd(db, pdf_dir):
         click.echo(f"    {d.paper_id_a} p.{d.page_a} <-> {d.paper_id_b} p.{d.page_b} (distance: {d.hamming_distance})")
 
 
+@cli.command("benchmark-worksheet")
+@click.option("--pdf-dir", default="data/ornl_pdfs")
+@click.option("--reports", default="70,40", help="Comma-separated report numbers")
+@click.option("--output", "-o", default="benchmark")
+def benchmark_worksheet_cmd(pdf_dir, reports, output):
+    """Generate reference extraction worksheet for human vs automated comparison."""
+    from fusionmatdb.qa.benchmark_worksheet import generate_worksheet
+    report_nums = [int(r.strip()) for r in reports.split(",")]
+    path = generate_worksheet(pdf_dir, report_nums, output_dir=output)
+    click.echo(f"Worksheet generated: {path}")
+    click.echo("Fill in ground_truth_records for each page, then run benchmark-compare.")
+
+
+@cli.command("cross-validate")
+@click.option("--db", default="fusionmatdb.sqlite")
+@click.option("--matdb4fusion", default=None, help="Path to MatDB4Fusion CSV")
+def cross_validate_cmd(db, matdb4fusion):
+    """Cross-validate against external reference databases."""
+    from fusionmatdb.storage.database import init_db, get_session
+    from fusionmatdb.qa.cross_db_validator import validate_against_sdc_ic, validate_against_matdb4fusion
+    init_db(db)
+    session = get_session()
+    click.echo("=== Cross-Database Validation ===\n")
+    click.echo("--- SDC-IC Material Library ---")
+    sdc_report = validate_against_sdc_ic(session)
+    click.echo(f"  Reference records: {sdc_report.total_reference_records}")
+    click.echo(f"  Matched: {sdc_report.total_matched}")
+    click.echo(f"  Overall accuracy: {sdc_report.overall_accuracy:.1%}")
+    for fv in sdc_report.field_validations:
+        if fv.n_compared:
+            click.echo(f"    {fv.field_name}: {fv.accuracy:.1%} ({fv.n_compared} compared, MAE={fv.mean_absolute_error:.1f})")
+    if matdb4fusion:
+        click.echo("\n--- MatDB4Fusion (KIT) ---")
+        mf_report = validate_against_matdb4fusion(session, matdb4fusion)
+        click.echo(f"  Reference records: {mf_report.total_reference_records}")
+        click.echo(f"  Matched: {mf_report.total_matched}")
+
+
 def main():
     cli()
 
