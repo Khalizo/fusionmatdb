@@ -358,6 +358,73 @@ def export(db, fmt, output, min_trust):
         click.echo(f"Exported {n} world model examples to {path}")
 
 
+@cli.command("qa-report")
+@click.option("--db", default="fusionmatdb.sqlite")
+def qa_report_cmd(db):
+    """Print QA summary report."""
+    from fusionmatdb.storage.database import init_db, get_session
+    from fusionmatdb.qa.qa_report import generate_qa_report
+    init_db(db)
+    session = get_session()
+    report = generate_qa_report(session)
+    click.echo(f"Total records:            {report.total_records}")
+    click.echo(f"High confidence (>=0.7):  {report.high_confidence_count} ({report.high_confidence_pct:.1f}%)")
+    click.echo(f"Cross-field flags:        {report.cross_field_flag_count}")
+    click.echo(f"Avg completeness:         {report.completeness_avg:.2f}")
+    click.echo(f"Records with uncertainty:  {report.records_with_uncertainty}")
+    click.echo(f"Records with traceability: {report.records_with_traceability}")
+
+
+@cli.command("dedup-scan")
+@click.option("--db", default="fusionmatdb.sqlite")
+def dedup_scan_cmd(db):
+    """Scan for duplicate records."""
+    from fusionmatdb.storage.database import init_db, get_session
+    from fusionmatdb.qa.dedup_detector import find_exact_duplicates
+    init_db(db)
+    session = get_session()
+    clusters = find_exact_duplicates(session)
+    if not clusters:
+        click.echo("No exact duplicates found.")
+        return
+    click.echo(f"Found {len(clusters)} duplicate clusters:")
+    for c in clusters[:10]:
+        click.echo(f"  Hash: {c.content_hash[:12]}... IDs: {c.record_ids} (primary: {c.primary_id})")
+    if len(clusters) > 10:
+        click.echo(f"  ... and {len(clusters) - 10} more")
+
+
+@cli.command("validate")
+@click.option("--db", default="fusionmatdb.sqlite")
+@click.option("--strict", is_flag=True, help="Fail on any cross-field flag")
+def validate_cmd(db, strict):
+    """Run enhanced validation on all records."""
+    from fusionmatdb.storage.database import init_db, get_session
+    from fusionmatdb.storage.schema import MechanicalProperty
+    from fusionmatdb.extraction.validator import validate_extraction, cross_field_checks
+    init_db(db)
+    session = get_session()
+    props = session.query(MechanicalProperty).all()
+    total_flags = 0
+    for prop in props:
+        record = {
+            "material_name": prop.material.name if prop.material else None,
+            "yield_strength_mpa_irradiated": prop.yield_strength_mpa_irradiated,
+            "yield_strength_mpa_unirradiated": prop.yield_strength_mpa_unirradiated,
+            "elongation_pct_irradiated": prop.elongation_pct_irradiated,
+            "elongation_pct_unirradiated": prop.elongation_pct_unirradiated,
+            "irradiation_state": prop.irradiation_condition.irradiation_state if prop.irradiation_condition else None,
+            "dose_dpa": prop.irradiation_condition.dose_dpa if prop.irradiation_condition else None,
+        }
+        flags = cross_field_checks(record)
+        if flags:
+            total_flags += 1
+            if strict:
+                for f in flags:
+                    click.echo(f"  [ID {prop.id}] {f}")
+    click.echo(f"\nValidation complete: {total_flags} records flagged out of {len(props)}")
+
+
 @cli.command("ingest-sdc-ic")
 @click.option("--repo-path", required=True, help="Path to cloned SDC-IC Material Library repo")
 @click.option("--db", default="fusionmatdb.sqlite", help="SQLite database path")

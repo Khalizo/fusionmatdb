@@ -54,3 +54,49 @@ def score_confidence(record: dict) -> float:
             record.get("yield_strength_mpa_unirradiated") is not None):
         score += 0.1
     return min(score, 1.0)
+
+
+def cross_field_checks(record: dict) -> list[str]:
+    """Flag physically suspicious cross-field relationships. Returns list of flag strings."""
+    flags = []
+    irr_yield = record.get("yield_strength_mpa_irradiated")
+    unirr_yield = record.get("yield_strength_mpa_unirradiated")
+    if irr_yield is not None and unirr_yield is not None and unirr_yield > 0:
+        if irr_yield > 2 * unirr_yield:
+            flags.append(
+                f"Irradiated yield ({irr_yield} MPa) > 2x unirradiated ({unirr_yield} MPa)"
+            )
+
+    irr_elong = record.get("elongation_pct_irradiated")
+    unirr_elong = record.get("elongation_pct_unirradiated")
+    if irr_elong is not None and unirr_elong is not None:
+        if irr_elong > unirr_elong:
+            flags.append(
+                f"Irradiated elongation ({irr_elong}%) > unirradiated ({unirr_elong}%) — unusual"
+            )
+
+    dose = record.get("dose_dpa")
+    irr_state = record.get("irradiation_state")
+    if irr_state == "irradiated" and dose is not None and dose == 0:
+        flags.append("Dose is 0 dpa but irradiation_state is 'irradiated'")
+
+    return flags
+
+
+IDENTITY_FIELDS = [
+    "material_name", "material_class", "irradiation_state", "dose_dpa",
+    "irradiation_temp_c", "test_temp_c", "reactor", "particle",
+]
+
+PROPERTY_CONTEXT_FIELDS = [
+    "experiment_type", "method", "source_reference", "source_institution",
+    "n_specimens", "data_origin",
+]
+
+ALL_COMPLETENESS_FIELDS = IDENTITY_FIELDS + PROPERTY_CONTEXT_FIELDS + PROPERTY_FIELDS
+
+
+def completeness_score(record: dict) -> float:
+    """Fraction of applicable fields that are populated (0.0-1.0)."""
+    populated = sum(1 for f in ALL_COMPLETENESS_FIELDS if record.get(f) is not None)
+    return populated / len(ALL_COMPLETENESS_FIELDS) if ALL_COMPLETENESS_FIELDS else 0.0
