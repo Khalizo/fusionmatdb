@@ -80,7 +80,16 @@ def export_parquet(session: Session, output_path: str, min_confidence: float = 0
             "distribution_type": prop.distribution_type,
         })
 
-    df = pd.DataFrame(records) if records else pd.DataFrame()
+    COLUMNS = [
+        "paper_id", "year", "material_name", "material_class",
+        "W", "Cr", "V", "Ta", "experiment_type", "test_temp_c",
+        "yield_strength_mpa_unirradiated", "yield_strength_mpa_irradiated",
+        "yield_strength_mpa_irradiated_lower", "yield_strength_mpa_irradiated_upper",
+        "delta_yield_strength_mpa", "confidence_score",
+        "quality_level", "trust_score", "source_pdf_url", "source_page_number",
+        "content_hash", "is_primary", "n_specimens", "distribution_type",
+    ]
+    df = pd.DataFrame(records) if records else pd.DataFrame(columns=COLUMNS)
     df.to_parquet(output_path, index=False)
     return len(records)
 
