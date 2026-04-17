@@ -598,6 +598,28 @@ def lineage_cmd(record_id, db):
     click.echo(f"Duplicate Group: {l.duplicate_cluster_id or 'N/A'}")
 
 
+@cli.command("fraud-scan")
+@click.option("--db", default="fusionmatdb.sqlite")
+@click.option("--pdf-dir", default="data/ornl_pdfs")
+def fraud_scan_cmd(db, pdf_dir):
+    """Scan for visual duplicate figures and suspicious data matches."""
+    from fusionmatdb.storage.database import init_db, get_session
+    from fusionmatdb.qa.fraud_detector import find_visual_duplicates, find_suspicious_data_matches
+    init_db(db)
+    session = get_session()
+    click.echo("Scanning for suspicious data matches...")
+    data_matches = find_suspicious_data_matches(session)
+    click.echo(f"  Found {len(data_matches)} suspicious data matches")
+    for m in data_matches[:5]:
+        click.echo(f"    Records {m.record_id_a} vs {m.record_id_b}: "
+                    f"{len(m.matching_fields)} matching, {len(m.differing_fields)} differing conditions")
+    click.echo(f"\nScanning for visual duplicates in {pdf_dir}...")
+    vis_dupes = find_visual_duplicates(pdf_dir)
+    click.echo(f"  Found {len(vis_dupes)} visual duplicate pairs")
+    for d in vis_dupes[:5]:
+        click.echo(f"    {d.paper_id_a} p.{d.page_a} <-> {d.paper_id_b} p.{d.page_b} (distance: {d.hamming_distance})")
+
+
 def main():
     cli()
 
