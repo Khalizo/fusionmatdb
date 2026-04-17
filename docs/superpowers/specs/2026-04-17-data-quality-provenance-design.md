@@ -168,6 +168,142 @@ Runs against existing 22,269 records. No API calls — uses data already in DB a
 
 ## Sub-project 5: Updated VLM Extraction & Validation Run
 
+### Page quality triage: `fusionmatdb/extraction/page_triage.py`
+
+A cheap, fast LLM pre-screening step that classifies each PDF page before extraction.
+
+**New class: `PageTriager`**
+- Uses Gemini Flash (same model, minimal prompt) for classification
+- Sends page image with a short prompt: "Classify this page's readability for data extraction. Respond with JSON: {classification, reason, has_data}"
+- Classifications:
+  - `clean` — clear text/tables/figures, proceed with extraction
+  - `degraded` — partially readable (faded scan, overlapping text, poor resolution) — extract but flag
+  - `unreadable` — cannot reliably extract (corrupted scan, handwritten, redacted) — skip, log for manual review
+  - `no_data` — page is readable but contains no extractable materials data (title pages, references, etc.) — skip
+- Cost: ~$1-2 for all 65 reports (tiny prompt, text-only response)
+
+**New table: `page_triage_results`**
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | Integer PK | Auto-increment |
+| `paper_id` | String FK → papers.id | NOT NULL |
+| `page_number` | Integer NOT NULL | 1-indexed |
+| `classification` | String NOT NULL | `clean`, `degraded`, `unreadable`, `no_data` |
+| `reason` | Text | LLM's explanation for the classification |
+| `has_extractable_data` | Boolean | Whether the page appears to contain materials data |
+| `triage_model` | String | Model used for classification |
+| `triage_timestamp` | DateTime | When the triage was performed |
+
+**Integration with extraction pipeline:**
+- Triage runs first for all pages (async, 20 concurrent, same as extraction)
+- `clean` pages → proceed to extraction
+- `degraded` pages → extract, but auto-flag resulting records for human review
+- `unreadable` pages → skip extraction, add to review queue with page image reference
+- `no_data` pages → skip entirely
+
+### Human review queue: `fusionmatdb/qa/review_queue.py`
+
+**New table: `review_queue`**
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | Integer PK | Auto-increment |
+| `paper_id` | String FK → papers.id | NOT NULL |
+| `page_number` | Integer NOT NULL | |
+| `mechanical_property_id` | Integer FK, nullable | NULL if page was unreadable (no record created) |
+| `flag_reason` | String NOT NULL | `degraded_page`, `unreadable_page`, `incomplete_after_enrichment`, `physics_check_anomaly`, `cross_field_inconsistency`, `figure_value_estimation` |
+| `flag_detail` | Text | Specific explanation |
+| `extraction_path` | String | `first_pass`, `second_pass_enriched`, `skipped` |
+| `review_status` | String NOT NULL | `pending`, `approved`, `corrected`, `rejected` |
+| `reviewer` | String, nullable | Who reviewed it |
+| `reviewer_notes` | Text, nullable | |
+| `reviewed_at` | DateTime, nullable | |
+
+**Sources that populate the review queue:**
+1. Page triage: `degraded` and `unreadable` pages
+2. Cross-page enrichment: records still incomplete after second pass
+3. Post-extraction validation: physics check anomalies, cross-field inconsistencies
+4. VLM extraction: records where model indicated low certainty about figure readings
+
+**CLI additions:**
+```
+fusionmatdb review-queue --db fusionmatdb.sqlite [--status pending]
+fusionmatdb review <record_id> --status approved|corrected|rejected --notes "..."
+```
+
+---
+
+### Cross-page context strategy
+
+ORNL reports frequently split context across pages — experimental setup on one page, results table on the next. Two-pass approach to handle this:
+
+**First pass: text context injection (every page, ~$0 extra cost)**
+
+For each page N being extracted, pymupdf text from pages N-1 and N+1 is prepended to the VLM prompt as text context. Page N itself is sent as an image (the extraction target).
+
+```
+VLM receives:
+  - Text: "CONTEXT FROM PREVIOUS PAGE:\n[pymupdf text of page N-1]"
+  - Text: "CONTEXT FROM NEXT PAGE:\n[pymupdf text of page N+1]"
+  - Image: [page N at 120 DPI]
+  - Prompt: "Extract data from the IMAGE. Use the text context to resolve
+             missing material names, irradiation conditions, or experimental
+             details that may have been defined on adjacent pages. Do NOT
+             extract data from the context text — only use it to fill gaps."
+```
+
+Rationale: cross-page dependencies are predominantly prose (section headings, experimental descriptions, condition lists). pymupdf captures prose reliably. Text tokens are ~100x cheaper than image tokens. This handles ~80% of cross-page cases at near-zero extra cost.
+
+**Second pass: image context enrichment (flagged pages only, ~$4-8 extra)**
+
+After first pass, identify incomplete records using these heuristics:
+- Has property values but no `material_name`
+- Has `material_name` but no irradiation conditions (`dose_dpa` and `irradiation_temp` both NULL)
+- Page starts mid-table (first record on page has data but no headers/context)
+- Record has NULL `source_reference` despite being on a data-rich page
+- Page triage classified the page as `degraded`
+
+For flagged pages, re-extract with all three pages (N-1, N, N+1) as **images**:
+
+```
+VLM receives:
+  - Image: [page N-1 at 120 DPI]
+  - Image: [page N at 120 DPI]
+  - Image: [page N+1 at 120 DPI]
+  - Prompt: "Extract data from the MIDDLE page only. The surrounding pages
+             provide context — use them to identify material names, irradiation
+             conditions, and experimental details. Do NOT extract data from
+             the first or last page."
+```
+
+Second pass results replace first pass records for those pages. Records still incomplete after second pass are added to the review queue with `flag_reason="incomplete_after_enrichment"`.
+
+**New fields on `MechanicalProperty`:**
+- `extraction_pass` — String: `first_pass` or `second_pass_enriched`
+- `cross_page_context_used` — Boolean: whether adjacent page context was used
+
+**Escalation chain:**
+```
+Page triage → clean/degraded/unreadable
+                    ↓
+    clean → First pass (image + text context from neighbours)
+ degraded → First pass + auto-flag for review
+unreadable → Skip → review queue
+                    ↓
+         First pass complete → check for incomplete records
+                    ↓
+        incomplete → Second pass (3 images, extract middle only)
+         complete → done
+                    ↓
+    Second pass complete → still incomplete?
+                    ↓
+              yes → review queue
+               no → done
+```
+
+---
+
 ### Extraction prompt update: `fusionmatdb/extraction/prompts.py`
 
 Add new fields to `_FIELDS` and update `VISION_EXTRACTION_PROMPT`:
@@ -215,18 +351,26 @@ Run updated extraction on 3 ORNL reports selected for diversity:
 
 Process:
 1. Download the 3 PDFs via `ORNLDownloader`
-2. Run `VertexVisionExtractor.extract_pdf()` with updated prompt
-3. Ingest into fresh SQLite DB with new schema
-4. Run backfill (quality assessments, provenance, trust scores)
-5. Validate: check new fields are populated, inspect sample records, verify lineage works end-to-end
+2. Run page triage on all pages — classify clean/degraded/unreadable/no_data
+3. Run first pass extraction with text context from adjacent pages
+4. Identify incomplete records, run second pass with image context on flagged pages
+5. Ingest into fresh SQLite DB with new schema
+6. Run backfill (quality assessments, provenance, trust scores)
+7. Populate review queue from triage flags, enrichment failures, physics checks
+8. Validate: check new fields populated, inspect sample records, verify lineage end-to-end
+9. Generate data quality report
 
 **Success criteria:**
+- Page triage classifies all pages with >90% sensible classifications (no_data pages are actually empty, unreadable pages are actually unreadable)
 - >50% of extracted records have `source_reference` populated
 - >80% have `source_institution` populated
 - >20% of records with numeric properties have at least one uncertainty bound
 - `n_specimens` populated where stated in source
+- Second pass enrichment fills at least some previously-missing fields on flagged records
 - All records get quality assessment, provenance hash, and trust score
 - Lineage query returns complete chain for any record
+- Review queue populated with sensible items (degraded pages, incomplete records, anomalies)
+- Data quality report generates valid HTML with all 9 sections
 
 ### Output: comparison report
 
@@ -325,6 +469,9 @@ Each sub-project includes tests in `tests/`:
 
 Standalone test functions, no classes. Fixtures via pytest fixtures or inline factory functions.
 
+- Page triage: test classification parsing, test pipeline integration (mock triage → extraction skips unreadable)
+- Review queue: test flagging from all sources (triage, enrichment, physics checks), test status transitions
+- Cross-page context: test text context injection (mock pymupdf output prepended to prompt), test second pass trigger heuristics
 - Extraction prompt: test that new fields appear in VLM output (mock VLM response with new fields, verify parsing)
 - Quality report: test HTML generation with fixture DB, verify all 9 sections present, verify embedded charts render
 
@@ -338,10 +485,10 @@ Standalone test functions, no classes. Fixtures via pytest fixtures or inline fa
 | 2: QA | `qa/__init__.py`, `qa/qa_report.py`, `qa/dedup_detector.py`, `qa/accuracy_benchmark.py` | `extraction/validator.py`, `cli.py` |
 | 3: Trust | `trust/__init__.py`, `trust/trust_score.py`, `trust/lineage.py` | `cli.py`, export logic |
 | 4: Backfill | `scripts/backfill_quality.py` | — |
-| 5: Extraction | — | `extraction/prompts.py`, `access/vision_extractor.py` (parse new fields), `cli.py` |
+| 5: Extraction | `extraction/page_triage.py`, `qa/review_queue.py` | `extraction/prompts.py`, `access/vision_extractor.py` (parse new fields, triage integration, cross-page context), `cli.py`, `storage/schema.py` (page_triage_results + review_queue tables, extraction_pass + cross_page_context_used columns) |
 | 6: Report | `reporting/__init__.py`, `reporting/quality_report.py` | `cli.py` |
 | Stubs | `knowledge/__init__.py` | `README.md` |
-| Tests | `tests/test_quality_assessment.py`, `tests/test_provenance.py`, `tests/test_dedup.py`, `tests/test_trust_score.py`, `tests/test_lineage.py`, `tests/test_backfill.py`, `tests/test_extraction_prompt.py`, `tests/test_quality_report.py` | — |
+| Tests | `tests/test_quality_assessment.py`, `tests/test_provenance.py`, `tests/test_dedup.py`, `tests/test_trust_score.py`, `tests/test_lineage.py`, `tests/test_backfill.py`, `tests/test_page_triage.py`, `tests/test_review_queue.py`, `tests/test_cross_page_context.py`, `tests/test_extraction_prompt.py`, `tests/test_quality_report.py` | — |
 
 ## Execution Order
 
