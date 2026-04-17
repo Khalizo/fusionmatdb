@@ -450,6 +450,92 @@ fusionmatdb quality-report --db fusionmatdb.sqlite --output fusionmatdb_quality_
 
 ---
 
+## Sub-project 7: Fraud & Anomaly Detection (Concern 10)
+
+### New module: `fusionmatdb/qa/fraud_detector.py`
+
+Detects suspicious duplicate figures/tables across reports and data-level anomalies. Addresses David's HSE anecdote — identical x-rays with different serial numbers.
+
+**Visual duplicate detection:**
+- `compute_image_hash(page_image_bytes) -> str` — perceptual hash (pHash) of a page image using the `imagehash` library
+- `find_visual_duplicates(pdf_dir, threshold=5) -> list[VisualDuplicate]` — compare pHash across all extracted page images, flag pairs with hamming distance below threshold
+- `VisualDuplicate` dataclass: paper_id_a, page_a, paper_id_b, page_b, hamming_distance, hash_a, hash_b
+- No LLM call needed — pure image comparison, runs in seconds
+
+**Data-level anomaly detection:**
+- `find_suspicious_data_matches(session, min_matching_fields=5) -> list[SuspiciousMatch]` — flag when two records from different papers have identical values for 5+ numeric fields but claim different experimental conditions
+- `SuspiciousMatch` dataclass: record_id_a, record_id_b, matching_fields, differing_fields
+
+**Integration with review queue:**
+- Visual duplicates and suspicious matches are added to the review queue with `flag_reason="visual_duplicate"` or `flag_reason="suspicious_data_match"`
+
+**CLI addition:**
+```
+fusionmatdb fraud-scan --db fusionmatdb.sqlite --pdf-dir data/ornl_pdfs
+```
+
+**Quality report section 10:**
+- Number of visual duplicate pairs found
+- Number of suspicious data matches
+- Example duplicate pair with page images referenced
+- Narrative: "AI-powered fraud and defect detection that humans can't match at scale"
+
+---
+
+## Sub-project 8: Extraction Quality Benchmarking (Concern 11)
+
+### A. Human vs Automated Benchmark
+
+**Reference extraction worksheet generator: `fusionmatdb/qa/benchmark_worksheet.py`**
+- `generate_worksheet(pdf_dir, report_numbers, pages_per_report=2) -> Path` — creates a JSON file with:
+  - For each selected page: page image path, empty fields for manual extraction, pymupdf text for reference
+  - Expert fills in the ground-truth values
+  - Format designed to be editable in any text editor or spreadsheet
+- `compare_worksheet(worksheet_path, db_path) -> BenchmarkReport` — compares human ground truth against VLM extraction
+  - Per-field: accuracy (within 5% tolerance), precision, recall, MAE
+  - Summary: records/hour (automated), cost per record, overall accuracy
+
+**Output for Jim:** Table comparing:
+| Metric | Human | LLM-Assisted | Fully Automated |
+|--------|-------|-------------|-----------------|
+| Accuracy (within 5%) | 100% (by definition) | ~98% | ~85-95% |
+| Throughput (records/hr) | ~10-20 | ~50-100 | ~3,000+ |
+| Cost per record | ~$5-10 | ~$1-2 | ~$0.002 |
+
+### B. Multi-Model Ensemble (if API keys available)
+
+**New module: `fusionmatdb/qa/multi_model_extraction.py`**
+- `extract_with_models(page_image, models=["gemini", "claude", "gpt4o"]) -> dict[str, list[dict]]` — run same page through multiple VLMs
+- `compute_agreement(results) -> AgreementReport` — per-field inter-model agreement rate
+- Where all models agree → high confidence assignment
+- Where they disagree → flag for human review or LLM-as-judge arbitration
+- `llm_judge(page_image, conflicting_extractions) -> list[dict]` — a judge model resolves disagreements
+
+**Requires:** ANTHROPIC_API_KEY and/or OPENAI_API_KEY in addition to GOOGLE_CLOUD_API_KEY. Falls back gracefully to single-model if keys unavailable.
+
+### C. Cross-Database Validation
+
+**New module: `fusionmatdb/qa/cross_db_validator.py`**
+- `validate_against_matdb4fusion(session, matdb4fusion_csv) -> CrossDBReport` — compare FusionMatDB values against MatDB4Fusion (KIT) for overlapping materials
+- `validate_against_sdc_ic(session) -> CrossDBReport` — compare against SDC-IC records already in DB
+- Per-field MAE, % within tolerance, material-class breakdown
+- This is free — uses data already ingested or publicly available
+
+### CLI additions
+```
+fusionmatdb benchmark-worksheet --pdf-dir data/ornl_pdfs --reports 70,40 --output worksheet.json
+fusionmatdb benchmark-compare --worksheet worksheet.json --db fusionmatdb.sqlite
+fusionmatdb cross-validate --db fusionmatdb.sqlite --matdb4fusion data/matdb4fusion.csv
+fusionmatdb multi-model-extract --pdf data/ornl_pdfs/ornl_report_70.pdf --pages 42,43,44
+```
+
+### Quality report sections 10 & 11:
+Added to the HTML report:
+- **Section 10: Anomaly & Fraud Detection** — visual duplicates, suspicious data matches
+- **Section 11: Extraction Accuracy** — human vs automated table, multi-model agreement (if available), cross-database validation results
+
+---
+
 ## Knowledge Graph (Out of Scope)
 
 Covered by a separate project. Stub module `fusionmatdb/knowledge/__init__.py` with TODO comment. README updated to note this is planned.
