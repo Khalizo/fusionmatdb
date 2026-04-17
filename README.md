@@ -192,6 +192,27 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
 
 ---
 
+## Data Quality & Provenance
+
+FusionMatDB includes built-in data quality, provenance tracking, and fraud detection:
+
+- **Quality assessments** — every record tagged with `quality_level`, `source_institution`, and page-level tracing back to source PDFs
+- **Content hashing** — SHA-256 fingerprint per record for exact-duplicate detection across ingestion runs
+- **Deduplication clusters** — automatic grouping of identical records extracted from overlapping report volumes
+- **Fraud / anomaly detection** — flags records from different papers with suspiciously identical numeric values but different irradiation conditions; optional perceptual-hash scan for visually duplicated figures across PDFs
+
+```bash
+# Run fraud and anomaly scan
+fusionmatdb fraud-scan --db fusionmatdb.sqlite --pdf-dir data/ornl_pdfs
+
+# Backfill quality metadata on existing records (Python API)
+from fusionmatdb.scripts.backfill_quality import (
+    backfill_quality_assessments, backfill_provenance, backfill_dedup_clusters,
+)
+```
+
+---
+
 ## Comparison
 
 | Database | Records | Irradiation data | Access | ML-ready |
