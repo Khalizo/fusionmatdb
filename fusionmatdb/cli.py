@@ -54,6 +54,17 @@ FIELD_MAP = {
     "void_diameter_nm": "void_diameter_nm",
     "dislocation_loop_density_per_m3": "dislocation_loop_density_per_m3",
     "dislocation_loop_diameter_nm": "dislocation_loop_diameter_nm",
+    # Uncertainty bounds
+    "yield_strength_mpa_irradiated_lower": "yield_strength_mpa_irradiated_lower",
+    "yield_strength_mpa_irradiated_upper": "yield_strength_mpa_irradiated_upper",
+    "uts_mpa_irradiated_lower": "uts_mpa_irradiated_lower",
+    "uts_mpa_irradiated_upper": "uts_mpa_irradiated_upper",
+    "hardness_lower": "hardness_lower",
+    "hardness_upper": "hardness_upper",
+    "dbtt_k_irradiated_lower": "dbtt_k_irradiated_lower",
+    "dbtt_k_irradiated_upper": "dbtt_k_irradiated_upper",
+    # Statistical metadata
+    "n_specimens": "n_specimens",
 }
 
 MATERIAL_FIELD_MAP = {
@@ -151,6 +162,10 @@ def _store_records(session, paper_id: str, records: list[dict], min_confidence: 
                     medium=rec.get("medium") or None,
                     helium_appm=rec.get("helium_appm") or None,
                     hydrogen_appm=rec.get("hydrogen_appm") or None,
+                    dose_dpa_lower=rec.get("dose_dpa_lower"),
+                    dose_dpa_upper=rec.get("dose_dpa_upper"),
+                    irradiation_temp_lower=rec.get("irradiation_temp_lower"),
+                    irradiation_temp_upper=rec.get("irradiation_temp_upper"),
                 )
                 session.add(irr_obj)
                 session.flush()
@@ -168,6 +183,10 @@ def _store_records(session, paper_id: str, records: list[dict], min_confidence: 
             confidence_score=rec.get("confidence_score", min_confidence),
             extraction_method=rec.get("extraction_method", "gemini_vision"),
             raw_extraction_json=json.dumps(rec),
+            distribution_type=rec.get("distribution_type") or None,
+            n_specimens=rec.get("n_specimens"),
+            extraction_pass=rec.get("extraction_pass", "first_pass"),
+            cross_page_context_used=rec.get("cross_page_context_used", False),
         )
         for src_field, col in FIELD_MAP.items():
             val = rec.get(src_field)

@@ -112,6 +112,12 @@ class IrradiationCondition(Base):
     hydrogen_appm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     neutron_spectrum: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    # Range bounds (backwards-compatible nullable)
+    irradiation_temp_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    irradiation_temp_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dose_dpa_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dose_dpa_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     paper: Mapped["Paper"] = relationship("Paper", back_populates="irradiation_conditions")
     material: Mapped["Material"] = relationship("Material", back_populates="irradiation_conditions")
     mechanical_properties: Mapped[List["MechanicalProperty"]] = relationship(
@@ -196,6 +202,22 @@ class MechanicalProperty(Base):
     hardness_std: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     dbtt_k_std: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # Uncertainty bounds
+    yield_strength_mpa_irradiated_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    yield_strength_mpa_irradiated_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    uts_mpa_irradiated_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    uts_mpa_irradiated_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hardness_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hardness_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dbtt_k_irradiated_lower: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dbtt_k_irradiated_upper: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Statistical metadata
+    distribution_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    n_specimens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Extraction pipeline metadata
+    extraction_pass: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    cross_page_context_used: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+
     # ML metadata
     extraction_method: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     confidence_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -207,3 +229,72 @@ class MechanicalProperty(Base):
     irradiation_condition: Mapped[Optional["IrradiationCondition"]] = relationship(
         "IrradiationCondition", back_populates="mechanical_properties"
     )
+
+
+class DataQualityAssessment(Base):
+    __tablename__ = "data_quality_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mechanical_property_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mechanical_properties.id"), unique=True, nullable=False
+    )
+    quality_level: Mapped[str] = mapped_column(String, nullable=False)
+    quality_justification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source_figure_or_table: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source_pdf_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_institution: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    extraction_accuracy_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    mechanical_property: Mapped["MechanicalProperty"] = relationship("MechanicalProperty", backref="quality_assessment")
+
+
+class ProvenanceRecord(Base):
+    __tablename__ = "provenance_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mechanical_property_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mechanical_properties.id"), unique=True, nullable=False
+    )
+    root_origin: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duplicate_cluster_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_primary: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+
+    mechanical_property: Mapped["MechanicalProperty"] = relationship("MechanicalProperty", backref="provenance")
+
+
+class PageTriageResult(Base):
+    __tablename__ = "page_triage_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    paper_id: Mapped[str] = mapped_column(String, ForeignKey("papers.id"), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    classification: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    has_extractable_data: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    triage_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    triage_timestamp: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    paper: Mapped["Paper"] = relationship("Paper")
+
+
+class ReviewQueueItem(Base):
+    __tablename__ = "review_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    paper_id: Mapped[str] = mapped_column(String, ForeignKey("papers.id"), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    mechanical_property_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("mechanical_properties.id"), nullable=True
+    )
+    flag_reason: Mapped[str] = mapped_column(String, nullable=False)
+    flag_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    extraction_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    review_status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    reviewer: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    reviewer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    paper: Mapped["Paper"] = relationship("Paper")
+    mechanical_property: Mapped[Optional["MechanicalProperty"]] = relationship("MechanicalProperty")
