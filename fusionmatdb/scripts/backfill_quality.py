@@ -95,7 +95,17 @@ def backfill_provenance(session: Session) -> int:
         if "_provenance" in raw:
             continue
 
-        content_hash = compute_content_hash(prop)
+        record = {
+            "material_name": prop.material.name if prop.material else None,
+            "dose_dpa": prop.irradiation_condition.dose_dpa if prop.irradiation_condition else None,
+            "irradiation_temp": prop.irradiation_condition.irradiation_temp if prop.irradiation_condition else None,
+            "test_temp": prop.test_temp,
+            "yield_strength_mpa_irradiated": prop.yield_strength_mpa_irradiated,
+            "yield_strength_mpa_unirradiated": prop.yield_strength_mpa_unirradiated,
+            "uts_mpa_irradiated": prop.uts_mpa_irradiated,
+            "hardness_value": prop.hardness_value,
+        }
+        content_hash = compute_content_hash(record)
         raw["_provenance"] = {
             "content_hash": content_hash,
             "root_origin": prop.paper_id,
@@ -121,9 +131,9 @@ def backfill_dedup_clusters(session: Session) -> int:
 
     # Map record id -> cluster label
     record_cluster: dict[int, str] = {}
-    for cluster_idx, (hash_val, ids) in enumerate(clusters.items()):
+    for cluster_idx, cluster in enumerate(clusters):
         cluster_label = f"dup_{cluster_idx:04d}"
-        for rid in ids:
+        for rid in cluster.record_ids:
             record_cluster[rid] = cluster_label
 
     if not record_cluster:
