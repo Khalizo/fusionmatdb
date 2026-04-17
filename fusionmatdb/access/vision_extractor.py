@@ -133,6 +133,7 @@ class VertexVisionExtractor:
         for rec in records:
             if not isinstance(rec, dict):
                 continue
+            rec = self._flatten_nested(rec)
             errors = validate_extraction(rec)
             if len(errors) <= 2:
                 rec["paper_id"] = paper_id
@@ -141,6 +142,21 @@ class VertexVisionExtractor:
                 rec["extraction_method"] = "gemini_vision"
                 validated.append(rec)
         return validated
+
+    @staticmethod
+    def _flatten_nested(rec: dict[str, Any]) -> dict[str, Any]:
+        """Flatten nested section dicts into a single flat dict.
+
+        Gemini sometimes returns {"MATERIAL IDENTIFICATION": {"material_name": ...}, ...}
+        instead of flat {"material_name": ...}. This handles both formats.
+        """
+        flat: dict[str, Any] = {}
+        for key, val in rec.items():
+            if isinstance(val, dict):
+                flat.update(val)
+            else:
+                flat[key] = val
+        return flat
 
     def _make_config(self, types):
         """Build GenerateContentConfig. Disables thinking only for SA/Gemini-2.5 path."""
@@ -193,7 +209,9 @@ class VertexVisionExtractor:
             if pdf_path:
                 self._save_raw_cache(Path(pdf_path), page_num, raw)
             return self._parse_response(raw, paper_id, page_num)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Page %d failed: %s", page_num, e)
             return []
 
     def _raw_cache_path(self, pdf_path: Path, page_num: int) -> Path:
