@@ -341,7 +341,8 @@ def stats(db):
 @click.option("--db", default="fusionmatdb.sqlite")
 @click.option("--format", "fmt", type=click.Choice(["parquet", "world_model"]), default="parquet")
 @click.option("--output", "-o", default="fusionmatdb_export")
-def export(db, fmt, output):
+@click.option("--min-trust", type=int, default=None, help="Minimum trust score (0-100)")
+def export(db, fmt, output, min_trust):
     """Export database to ML training formats."""
     from fusionmatdb.storage.database import init_db, get_session
     from fusionmatdb.storage.exporter import export_parquet, export_world_model
@@ -349,7 +350,7 @@ def export(db, fmt, output):
     session = get_session()
     if fmt == "parquet":
         path = f"{output}.parquet"
-        n = export_parquet(session, path)
+        n = export_parquet(session, path, min_trust=min_trust)
         click.echo(f"Exported {n} records to {path}")
     elif fmt == "world_model":
         path = f"{output}_world_model.json"
@@ -498,6 +499,36 @@ def ingest_sdc_ic(repo_path, db):
     click.echo(f"\nIngestion complete.")
     click.echo(f"  Records stored:  {stored}")
     click.echo(f"  Materials:       {len(mat_cache)}")
+
+
+@cli.command("lineage")
+@click.argument("record_id", type=int)
+@click.option("--db", default="fusionmatdb.sqlite")
+def lineage_cmd(record_id, db):
+    """Show full provenance lineage for a record."""
+    from fusionmatdb.storage.database import init_db, get_session
+    from fusionmatdb.trust.lineage import get_lineage
+    init_db(db)
+    session = get_session()
+    try:
+        l = get_lineage(session, record_id)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Record ID:       {l.record_id}")
+    click.echo(f"Paper:           {l.paper_title}")
+    click.echo(f"DOI:             {l.paper_doi or 'N/A'}")
+    click.echo(f"Source PDF:      {l.source_pdf_url or 'N/A'}")
+    click.echo(f"Page:            {l.source_page_number or 'N/A'}")
+    click.echo(f"Figure/Table:    {l.source_figure_or_table or 'N/A'}")
+    click.echo(f"Institution:     {l.source_institution or 'N/A'}")
+    click.echo(f"Quality:         {l.quality_level or 'N/A'}")
+    click.echo(f"Confidence:      {l.confidence_score or 'N/A'}")
+    click.echo(f"Trust Score:     {l.trust_score}/100")
+    click.echo(f"Extraction:      {l.extraction_method} ({l.extraction_pass})")
+    click.echo(f"Cross-page:      {l.cross_page_context_used}")
+    click.echo(f"Content Hash:    {l.content_hash or 'N/A'}")
+    click.echo(f"Primary:         {l.is_primary}")
+    click.echo(f"Duplicate Group: {l.duplicate_cluster_id or 'N/A'}")
 
 
 def main():
