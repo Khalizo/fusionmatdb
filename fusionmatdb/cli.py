@@ -620,6 +620,16 @@ def fraud_scan_cmd(db, pdf_dir):
         click.echo(f"    {d.paper_id_a} p.{d.page_a} <-> {d.paper_id_b} p.{d.page_b} (distance: {d.hamming_distance})")
 
 
+@cli.command("quality-report")
+@click.option("--db", default="fusionmatdb.sqlite")
+@click.option("--output", "-o", default="fusionmatdb_quality_report.html")
+def quality_report_cmd(db, output):
+    """Generate standalone HTML data quality report."""
+    from fusionmatdb.reporting.quality_report import generate_quality_report
+    path = generate_quality_report(db, output)
+    click.echo(f"Quality report generated: {path}")
+
+
 @cli.command("benchmark-worksheet")
 @click.option("--pdf-dir", default="data/ornl_pdfs")
 @click.option("--reports", default="70,40", help="Comma-separated report numbers")
