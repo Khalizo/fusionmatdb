@@ -94,7 +94,7 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
   │  MULTIMODAL VLM EXTRACTION  │      │
   │  20 concurrent · temp=0      │      │
   │  Reads: tables + figures     │      │
-  │  Cost: ~$40 · Time: ~44 min  │      │
+  │                              │
   └──────────┬───────────────────┘      │
              │                          │
              ▼                          ▼
@@ -136,7 +136,7 @@ fusionmatdb export --format world_model --output data/export --db fusionmatdb.sq
 | **Material classes** | 19 |
 | **Source documents** | 65 ORNL reports + SDC-IC ITER library |
 | **Extraction model** | multimodal VLM (cloud VLM API, temperature=0) |
-| **Cost to reproduce** | ~$40 |
+
 
 ### Property Coverage
 
