@@ -21,7 +21,7 @@
 
 ---
 
-No publicly accessible, ML-ready fusion irradiation database exists. EUROfusion EDDI (~3,000 records) is locked behind EU consortium access. MatDB4Fusion covers unirradiated baselines only. **FusionMatDB fills the gap**: irradiation effects data extracted from decades of publicly available PDFs — for ~$40 and 44 minutes of cloud VLM API compute.
+No publicly accessible, ML-ready fusion irradiation database exists. EUROfusion EDDI (~3,000 records) is locked behind EU consortium access. MatDB4Fusion covers unirradiated baselines only. **FusionMatDB fills the gap**: irradiation effects data extracted from decades of publicly available PDFs
 
 > *"An open-access, single source of truth for high-quality fusion materials data... is essential for this new phase of technology development."*
 > — Jim Pickles, Head of Materials, Tokamak Energy (COP29, November 2024)
